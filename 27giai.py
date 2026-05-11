@@ -12,12 +12,12 @@ HIEU_CHART = {0: [0,11,22,33,44,55,66,77,88,99], 1: [9,10,21,32,43,54,65,76,87,9
               6: [4,15,26,37,48,59,60,71,82,93], 7: [3,14,25,36,47,58,69,70,81,92],
               8: [2,13,24,35,46,57,68,79,80,91], 9: [1,12,23,34,45,56,67,78,89,90]}
 
-st.set_page_config(page_title="App 27 Giải Pro - Tuấn Phong", layout="wide")
+st.set_page_config(page_title="App 27 Giải Cao Cấp", layout="wide")
 
 if 'db' not in st.session_state:
     st.session_state.db = {"bang_b_points": [], "current_raw": [], "history": []}
 
-if st.sidebar.button("❌ RESET ALL", use_container_width=True):
+if st.sidebar.button("❌ KHÔI PHỤC TẤT CẢ", use_container_width=True):
     st.session_state.db = {"bang_b_points": [], "current_raw": [], "history": []}
     st.rerun()
 
@@ -35,7 +35,7 @@ def analyze_number(num):
 with st.sidebar:
     st.header("⚙️ Cấu hình 27 Giải")
     uploaded_file = st.file_uploader("1. Tải ảnh bảng kết quả", type=["png", "jpg", "jpeg"])
-    uploaded_json = st.file_uploader("📂 Nạp dữ liệu cũ", type=["json"])
+    uploaded_json = st.file_uploader("📂 Tìm kiếm dữ liệu cũ", type=["json"])
     if uploaded_json:
         st.session_state.db = json.load(uploaded_json)
     run_btn = st.button("🚀 CẬP NHẬT TỔNG LỰC", use_container_width=True)
@@ -46,27 +46,28 @@ if uploaded_file and run_btn:
     image = Image.open(uploaded_file)
     results = reader.readtext(np.array(image), detail=0)
     
-    all_27_loto = []
+    all_loto = []
     all_digits_list = []
     for text in results:
         clean_text = "".join([d for d in text if d.isdigit()])
         if len(clean_text) >= 2:
-            all_27_loto.append(int(clean_text[-2:]))
+            all_loto.append(int(clean_text[-2:]))
             for digit in clean_text: all_digits_list.append(int(digit))
     
-    all_27_loto = all_27_loto[:27] 
+    all_loto = all_loto[:27] # Lấy đủ 27 giải
 
-    if all_27_loto:
+    if len(all_loto) >= 1:
         raw = all_digits_list
-        gdb_2_so = all_27_loto[0]
-        rank_val, loai_val, no_30_str = "N/A", "N/A", "N/A"
+        gdb_2_so = all_loto[0]
+        loto_con_lai = all_loto[1:] # 26 giải còn lại
+        
+        n_10, n_20, n_30, rank_val, loai_val = "N/A", "N/A", "N/A", "N/A", "N/A"
 
-        # 1. Tính toán hiệu quả dựa trên dữ liệu CŨ trước khi nạp ảnh mới
+        # 1. Tính toán hiệu quả dựa trên điểm cũ của ảnh trước
         if st.session_state.db["current_raw"] and st.session_state.db["bang_b_points"]:
             old_raw, old_pts = st.session_state.db["current_raw"], st.session_state.db["bang_b_points"]
             df_temp = pd.DataFrame([{"S": old_raw[i], **old_pts[i]} for i in range(len(old_raw))])
             
-            # Tính bảng C đếm 0
             list_c_temp = []
             for i in range(10):
                 m = df_temp[df_temp["S"] == i]
@@ -88,13 +89,17 @@ if uploaded_file and run_btn:
                 rank_val = int(rank_found[0]) + 1
                 loai_val = "A" if rank_val <= 70 else "T"
             
-            # THỐNG KÊ NỔ 30 (Đếm xem có bao nhiêu số lô nằm trong Top 30 điểm thấp)
-            top_30_list = df_rank.head(30)["SO"].tolist()
-            count_hit = sum(1 for n in all_27_loto if f"{n:02d}" in top_30_list)
-            no_30_str = f"{count_hit}/30"
+            # THỐNG KÊ ĂN 10, 20, 30
+            top_10 = df_rank.head(10)["SO"].tolist()
+            top_20 = df_rank.head(20)["SO"].tolist()
+            top_30 = df_rank.head(30)["SO"].tolist()
+            
+            n_10 = f"{sum(1 for n in all_loto if f'{n:02d}' in top_10)}/10"
+            n_20 = f"{sum(1 for n in all_loto if f'{n:02d}' in top_20)}/20"
+            n_30 = f"{sum(1 for n in all_loto if f'{n:02d}' in top_30)}/30"
 
-        # 2. CẬP NHẬT ĐIỂM BẢNG B
-        targets = [analyze_number(n) for n in all_27_loto]
+        # 2. CẬP NHẬT ĐIỂM CHO ẢNH MỚI (So với 27 giải)
+        targets = [analyze_number(n) for n in all_loto]
         s_dau, s_duoi, s_tong, s_hieu = {t["dau"] for t in targets}, {t["duoi"] for t in targets}, {t["tong"] for t in targets}, {t["hieu"] for t in targets}
         s_cham = set(); [s_cham.update(t["cham"]) for t in targets]
 
@@ -116,19 +121,29 @@ if uploaded_file and run_btn:
             "GĐB": f"{gdb_2_so:02d}",
             "Vị trí": rank_val,
             "Loại": loai_val,
-            "Nổ 30": no_30_str
+            "Nổ 10": n_10,
+            "Nổ 20": n_20,
+            "Nổ 30": n_30
         })
         st.session_state.db["current_raw"] = raw
+        st.session_state.db["all_27_recent"] = all_loto
         st.success(f"Đã cập nhật 27 giải. GĐB: {gdb_2_so:02d}")
     else:
-        st.error("Không đọc được ảnh!")
+        st.error("Không đọc được dữ liệu số từ ảnh!")
 
 # --- HIỂN THỊ ---
-if st.session_state.db["current_raw"] and st.session_state.db["bang_b_points"]:
+if st.session_state.db.get("current_raw"):
+    # Hiển thị 27 giải lô (GĐB nổi bật)
+    if "all_27_recent" in st.session_state.db:
+        loto_list = st.session_state.db["all_27_recent"]
+        st.write("### 📜 Danh sách 27 giải vừa quét")
+        col_gdb, col_loto = st.columns([1, 4])
+        col_gdb.metric("Giải Đặc Biệt", f"{loto_list[0]:02d}")
+        col_loto.write(f"**26 Giải Lô:** {', '.join([f'{n:02d}' for n in loto_list[1:]])}")
+
+    # Tính toán bảng C, D
     raw, pts = st.session_state.db["current_raw"], st.session_state.db["bang_b_points"]
     df_b = pd.DataFrame([{"SO VE": raw[i], **pts[i]} for i in range(len(raw))])
-    
-    # Bảng C đếm 0
     list_c = []
     for i in range(10):
         m = df_b[df_b["SO VE"] == i]
@@ -145,21 +160,23 @@ if st.session_state.db["current_raw"] and st.session_state.db["bang_b_points"]:
     df_dan = pd.DataFrame(dan_all).sort_values("DIEM", ascending=True)
 
     # UI DÀN SỐ
-    st.write("### 🎯 DÀN SỐ (ƯU TIÊN ĐIỂM THẤP)")
+    st.divider()
     c1, c2 = st.columns(2)
     with c1:
-        n1 = st.number_input("Dàn 1:", 1, 100, 49)
-        st.text_area("Dàn 1 (Thấp -> Cao):", value=" ".join(df_dan.head(n1)["SO"].tolist()), height=120)
+        n1 = st.number_input("Số quân Dàn 1:", 1, 100, 49)
+        st.text_area("Dàn thấp điểm:", value=" ".join(df_dan.head(n1)["SO"].tolist()), height=120)
     with c2:
-        n2 = st.number_input("Dàn 2:", 1, 100, 30)
-        st.text_area("Dàn 30 (Siêu phẩm):", value=" ".join(df_dan.head(n2)["SO"].tolist()), height=120)
+        st.write("**Gợi ý Siêu phẩm:**")
+        st.info(" ".join(df_dan.head(10)["SO"].tolist()))
 
     # TABS
     t_hist, t_c, t_b, t_a = st.tabs(["🕒 Lịch sử", "🗂️ Bảng C & D", "🎲 Bảng B", "📊 Bảng A"])
     
     with t_hist:
-        st.subheader("Bảng Lịch sử & Thống kê Nổ 30")
-        st.table(pd.DataFrame(st.session_state.db["history"]))
+        st.subheader("Bảng Lịch sử & Thống kê Tỉ lệ Nổ")
+        # Sử dụng dataframe để bảng trông gọn và scannable hơn
+        hist_df = pd.DataFrame(st.session_state.db["history"])
+        st.dataframe(hist_df, use_container_width=True, hide_index=True)
     
     with t_c:
         st.subheader("Bảng C (Tần suất vừa nổ)")
